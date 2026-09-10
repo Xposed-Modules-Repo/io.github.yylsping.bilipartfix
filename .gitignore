@@ -12,6 +12,7 @@ local.properties
 .env.*
 !.env.example
 signing-private/
+signing.properties
 keystore.properties
 !keystore.properties.example
 *.jks
@@ -32,6 +33,10 @@ dist/
 /ANALYSIS*.md
 /VALIDATION*.md
 /XPOSED_UPDATE.md
+/*_ANALYSIS.md
+/AGENTS.md
+/logs/
+/history-apks/
 
 # OS files
 .DS_Store

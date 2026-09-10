@@ -60,6 +60,8 @@ public final class BiliPartFixHook extends XposedModule {
                         if (mainProcess) {
                             installDataSourceFix(classLoader);
                             DynamicCommentFix.install(classLoader);
+                            WatchLaterFix.install(classLoader);
+                            PlayerUniteFix.install(classLoader);
                             CommentImageFix.install(classLoader);
                             SmallStationPostFix.install(classLoader);
                             ActivityResumeCoordinator.install();
