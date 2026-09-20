@@ -25,19 +25,35 @@ keystore.properties
 # Local release artifacts
 *.apk
 *.aab
-*-source.zip
+*.zip
+*.7z
+*.rar
+*.tgz
+*.tar.gz
 dist/
 /SHA256SUMS.txt
 
-# Internal analysis and validation notes
+# Private prompts, agent instructions, and local validation notes
+/*.md
+/AGENTS.md
+/SKILL.md
+/*goal*.md
+/*prompt*.md
 /ANALYSIS*.md
 /VALIDATION*.md
 /XPOSED_UPDATE.md
 /*_ANALYSIS.md
-/AGENTS.md
 /logs/
 /history-apks/
+
+# Raw reverse-engineering and device-debug artifacts
+/research/
+/processing/
+/tmp/
 
 # OS files
 .DS_Store
 Thumbs.db
+
+# README is public
+!/README.md

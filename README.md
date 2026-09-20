@@ -12,6 +12,9 @@
 - 恢复“稍后再看”的列表加载与视频跳转。
 - 修复部分普通及充电 UGC 视频被旧播放接口要求升级的问题，保留服务端返回的试看范围和充电条件。
 - 复用原生充电入口，修复从试看提示进入充电页面时顶部位置异常、返回区域难以点击的问题。
+- 在原生设置顶部提供 `bili-part-fix` 入口，进入后可通过“解码模式选择”切换 Smart Auto、V3 硬解优先或软件解码优先。Smart Auto V2 默认信任宿主：只有现代硬件能力与已证明过时的旧 selector 原因同时成立时才允许纠正 host=false；信息不完整、HDR/DRM、特殊链与直播均沿用宿主，并保留 IJK 原生失败回退。
+
+7040300 的 Java selector 仍有 OMX-era naming 偏置，但当前测试设备通过 OMX alias 正确落到 vendor C2 硬解，未发现需要发布版绕过的 blacklist。直播已确认使用独立 IJK selector，并稳定选择 `c2.qti.hevc.decoder.low_latency`；当前没有加入 Live Smart Auto。
 
 模块仅在目标版本匹配时安装业务 Hook；其他哔哩哔哩版本会直接跳过。
 
@@ -21,6 +24,8 @@
 
 模块没有独立后台服务或常驻进程，不进行后台轮询或周期请求，也不记录或持久化 Cookie、Token 等敏感会话信息。图片继续使用哔哩哔哩自带的加载与缓存组件。
 
+解码模式保存在宿主私有目录的 `SharedPreferences: bili_part_fix.xml` 中，key 为 `decoder_mode`。模块只持久化解码模式，不保存 Cookie/Token 等敏感数据。停用模块后该 preference 可能仍留在哔哩哔哩私有数据目录中，但不会产生后台行为。
+
 ## 兼容性
 
 | 项目 | 要求 |
@@ -28,7 +33,7 @@
 | 目标应用 | 哔哩哔哩 Android 7.4.0（7040300） |
 | Android | 8.1（API 27）及以上 |
 | 框架 | 支持 libxposed Modern API 102 的 LSPosed |
-| 模块版本 | 1.6.0（versionCode 10） |
+| 模块版本 | 1.7.0（versionCode 11） |
 
 ## 安装
 
@@ -36,17 +41,19 @@
 2. 在 LSPosed 中启用模块，作用域只选择“哔哩哔哩”。
 3. 强制停止哔哩哔哩后重新打开。
 
-需要回滚时，在 LSPosed 中停用模块并重启目标应用，或直接卸载模块。模块不会创建需要迁移或清理的长期业务数据。
+需要回滚时，在 LSPosed 中停用模块并重启目标应用，或直接卸载模块。停用后解码模式 preference 可以保留，但没有 Hook 或后台组件会读取并执行它。
 
 ## 构建
 
 需要 JDK 17、Android SDK 36，并可从 Maven Central 获取 `io.github.libxposed:api:102.0.0`。
 
 ```powershell
-.\gradlew.bat clean assembleDebug
+.\gradlew.bat clean testDebugUnitTest assembleDebug
 ```
 
 测试 APK 输出到 `app/build/outputs/apk/debug/`。面向普通用户的已签名版本请从 GitHub Releases 下载。
+
+维护者生成正式包时使用 `assembleRelease`，发布前应核对 APK 签名、`debuggable` 状态和 SHA-256。
 
 ## 相关项目
 

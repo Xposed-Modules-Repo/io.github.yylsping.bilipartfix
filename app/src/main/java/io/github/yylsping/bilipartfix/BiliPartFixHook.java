@@ -62,6 +62,16 @@ public final class BiliPartFixHook extends XposedModule {
                             DynamicCommentFix.install(classLoader);
                             WatchLaterFix.install(classLoader);
                             PlayerUniteFix.install(classLoader);
+                            try {
+                                PlayerCodecFix.install(context, classLoader);
+                            } catch (Throwable throwable) {
+                                XposedBridge.log("player codec policy installation failed", throwable);
+                            }
+                            try {
+                                SettingsInjection.install(context, classLoader);
+                            } catch (Throwable throwable) {
+                                XposedBridge.log("settings injection installation failed", throwable);
+                            }
                             CommentImageFix.install(classLoader);
                             SmallStationPostFix.install(classLoader);
                             ActivityResumeCoordinator.install();

@@ -1,0 +1,149 @@
+{
+  "sample": {
+    "packageName": "tv.danmaku.bili",
+    "versionName": "6.7.0",
+    "versionCode": 6070800,
+    "variant": "Sony Xperia 1 III",
+    "abis": ["arm64-v8a"],
+    "processBitness": "64-bit",
+    "apkSha256": "e1143c19d3cb46bfe56fa26c076127a2a6c740664c747114d59190728bd43595",
+    "apkSize": 46011619,
+    "splits": false,
+    "targetSdk": 29,
+    "minSdk": 17,
+    "testDevice": "OnePlus PLQ110 (SM8750, Android 16) — NOT Xperia 1 III; Sony runtime branches not triggered",
+    "sonyChannelMechanism": "runtime read /oem/deletable-app/sony_bili_channel.txt (preinstall channel attribution)"
+  },
+  "settings": {
+    "key": "pref_player_codecMode_key",
+    "type": "string",
+    "default": "0",
+    "prefsFile": "bili_main_settings_preferences.xml",
+    "fragment": "com.bilibili.app.preferences.PreferenceTools$CodecModeFragment",
+    "widget": "tv.danmaku.bili.widget.RadioGroupPreference",
+    "xmlResource": "r/i/h.xml (R.xml.h 0x7f140007)",
+    "modes": {
+      "auto": { "display": "自动选择（推荐）", "storedValue": "0" },
+      "v3_hw": { "display": "V3硬解优先 (ijkplayer)", "storedValue": "4" },
+      "software": { "display": "软解优先（兼容模式）", "storedValue": "1" }
+    }
+  },
+  "player": {
+    "backend": "IJK_PLAYER (all three modes)",
+    "ijkClass": "tv.danmaku.ijk.media.player.IjkMediaPlayer",
+    "creatorClass": "tv.danmaku.biliplayer.basic.k.g2 (via interface l.a; impl class name not extracted)",
+    "adapterClass": "tv.danmaku.biliplayer.basic.adapter.h.c (SwitchablePlayerAdapter family)",
+    "decisionClass": "tv.danmaku.biliplayer.basic.adapter.h.c.d(): mode==1||2 -> IJK+noMediaCodec; else(0/4) -> IJK+MediaCodec",
+    "configReader": "m3.a.c.h.b.c.a(Context) reads pref_player_codecMode_key (int, string-tolerant)",
+    "paramsWriter": "m3.a.c.h.a.a(Context, PlayerParams) -> VideoViewParams.a = codecMode",
+    "processModel": "AIDL proxy IjkMediaPlayerItem (main) -> IjkMediaPlayerService/IjkMediaPlayerItemClient (:ijkservice process, native)",
+    "softwareStillUsesIjk": true
+  },
+  "ijkOptions": [
+    { "mode": "v3/auto", "category": 3, "key": "mediacodec", "value": 1, "evidence": "static IjkMediaPlayerItem ~L1380-1571 (mEnableHwCodec)" },
+    { "mode": "v3/auto", "category": 3, "key": "mediacodec-hevc", "value": 1, "evidence": "static; gated by HEVC switch pref_key_is_ijkplayer_enable_h265" },
+    { "mode": "v3/auto", "category": 3, "key": "async-init-decoder", "value": 1, "evidence": "static; only when getCodecName(mime) non-null (never on c2-only devices)" },
+    { "mode": "v3/auto", "category": 3, "key": "mediacodec-default-name", "value": "<codec name>", "evidence": "static; NOT delivered on Android 10+ c2-only devices (selector rank rejects non-omx.*)" },
+    { "mode": "v3/auto", "category": 3, "key": "mediacodec-default-avc-name", "value": "<codec name>", "evidence": "static; same c2 caveat" },
+    { "mode": "v3/auto", "category": 3, "key": "mediacodec-default-hevc-name", "value": "<codec name>", "evidence": "static; same c2 caveat" },
+    { "mode": "software", "category": null, "key": "mediacodec", "value": null, "evidence": "key NOT delivered at all in SW mode (mEnableHwCodec=false); runtime: no MediaCodec activity, ff_* threads only" },
+    { "mode": "all", "category": 3, "key": "framedrop", "value": 1, "evidence": "static" },
+    { "mode": "all", "category": 3, "key": "buffering-water-mark-string", "value": "500,1000,2000,4000,5000", "evidence": "static" },
+    { "mode": "all", "category": 3, "key": "enable-accurate-seek", "value": 1, "evidence": "static" }
+  ],
+  "native": {
+    "libraries": [
+      { "name": "libijkplayer.so", "size": 759848, "sha256": "b527f69caa8b9a2740ab2a087e30a39ef86dca0d94fac35cb11ccb67d066b884", "stripped": true },
+      { "name": "libijkffmpeg.so", "size": 5666224, "sha256": "8f23f82afa88b5438567c957cedebb55bf0efd095936c362df5d6b827334f391", "stripped": true },
+      { "name": "libijksdl.so", "size": 546968, "sha256": "422de9f23f44b97ead6b80b1e84d73bf8efd728cf5900305d58ec497a1212c01", "stripped": true }
+    ],
+    "mediaCodecPresent": true,
+    "jniPath": [
+      "IjkMediaPlayerItemClient._setOption (native)",
+      "J4AC_..._IjkMediaPlayerClient__onSelectCodec -> Java onSelectCodec -> AIDL (VOD returns null; live registers selector)"
+    ],
+    "keyStrings": [
+      "mediacodec", "mediacodec-avc", "mediacodec-hevc", "mediacodec-mpeg2", "mediacodec-mpeg4",
+      "mediacodec-auto-rotate", "mediacodec-handle-resolution-change", "mediacodec-sync",
+      "mediacodec-default-name", "mediacodec-default-avc-name", "mediacodec-default-hevc-name",
+      "MediaCodec:AMEDIACODEC__UNKNOWN_ERROR error will try fallback to ffplay decoder",
+      "amc: use default avc codec", "amc: no suitable codec", "quirk: reconfigure with new codec"
+    ],
+    "keyFunctions": [
+      "ffpipeline mediacodec open (option-table driven, via strings xref)",
+      "native fallback to ffplay decoder (runtime-observed)",
+      "H264 profile gating: HIGH_10/HIGH_422/HIGH_444/CAVLC444 disabled"
+    ]
+  },
+  "autoPolicy": {
+    "summary": "Auto == V3 at Java decision layer (identical path: IJK_PLAYER + mediacodec=1). 'Auto' intelligence = native ffplay fallback + Java SwitchablePlayerAdapter rebuild-to-SW retry (<=2) + cloud blacklists.",
+    "inputs": ["codecMode pref only (Java layer)", "MediaCodecList capability (selector)", "cloud config (fake-name regex, h265-cpu-blacklist, buvid-graylist)"],
+    "decisionOrder": [
+      "read pref_player_codecMode_key (default 0)",
+      "mode==1||2 -> SW (no mediacodec option); else -> HW (mediacodec=1)",
+      "runtime fallback: native ffplay on MediaCodec failure, then Java rebuild-to-SW"
+    ]
+  },
+  "runtime": {
+    "hardwareDecoder": "c2.qti.hevc.decoder.low_latency (dumpsys media.resource_manager direct evidence; HEVC 512x288 stream; both Auto and V3)",
+    "softwareDecoder": "FFmpeg software decoder inside ijkplayer (ff_read/ff_video_dec/ff_audio_dec/ff_vout threads in :ijkservice; zero MediaCodec activity)",
+    "fallbackObserved": true,
+    "fallbackEvidence": "logcat_auto_live.txt: QC2V4l2Decoder buffer alloc error -> AMEDIACODEC__UNKNOWN_ERROR -> 'will try fallback to ffplay decoder'",
+    "h264_1080p_case": "UNTESTED (server rejected new videos for old client; test video only offered HEVC 512x288)",
+    "lifecycle": {
+      "seek": "decoder flush only, no rebuild",
+      "switchPart": "decoder rebuilt, player instance reused (no new prepare)",
+      "autoNextPart": "same as switchPart",
+      "backgroundAndReturn": "full prepare + decoder rebuild (via deep-link re-entry)",
+      "qualitySwitch": "UNKNOWN (UI automation not achieved)"
+    }
+  },
+  "sonySpecific": {
+    "found": false,
+    "summary": "No Sony/Xperia codec policy, decoder list, default-mode change, or renderer specialization. Only: preinstall channel reader (/oem/deletable-app/sony_bili_channel.txt via tv.danmaku.bili.utils.g0), brand display name map (sony->索尼), and Sony-music CONTENT flag (bundle_key_sony_video_source, disables background-audio for those videos).",
+    "evidence": [
+      "tv.danmaku.bili.utils.g0 (preassemble channel, referenced only by tv.danmaku.bili.utils.a0)",
+      "com.bilibili.app.preferences.utils.c (brand name display, @Deprecated)",
+      "tv.danmaku.biliplayer.features.options.PlayerOptionsPlayerAdapter bundle_key_sony_video_source",
+      "full-DEX search Sony/Xperia/MANUFACTURER/BRAND: no codec-relevant hits",
+      "only device special-cases found: huawei p7 (render param), meizu M1852 (util), meizu (live)"
+    ]
+  },
+  "migrationAnchors": {
+    "classNames": [
+      "tv.danmaku.ijk.media.player.IjkMediaPlayer",
+      "tv.danmaku.ijk.media.player.IjkMediaCodecInfo",
+      "tv.danmaku.ijk.media.player.IjkCodecHelper",
+      "tv.danmaku.ijk.media.player.services.IjkMediaPlayerService",
+      "tv.danmaku.ijk.media.player.services.IjkMediaPlayerClient",
+      "tv.danmaku.ijk.media.player.IMediaPlayer"
+    ],
+    "strings": [
+      "mediacodec", "mediacodec-hevc", "mediacodec-avc",
+      "mediacodec-default-name", "mediacodec-default-avc-name", "mediacodec-default-hevc-name",
+      "pref_player_codecMode_key", "codecMode",
+      "use_ijk_media_codec", "enableHwCodec",
+      "V3硬解", "软解优先", "自动选择",
+      "player.player.decoding-mode"
+    ],
+    "structuralPatterns": [
+      "decision method: int codecMode in -> {player backend, boolean useMediaCodec} out; SW branch sets false, others true",
+      "option assembly: pre-prepare Bundle per category; codec group in one category; conditional on mediacodec keys",
+      "AIDL proxy in main process + real player in :ijkservice-like process; setOptionBundle batch forward",
+      "fallback: onError/onInfo listener -> counted retry -> strategy table (hw first, sw last) rebuild player",
+      "selector: enumerate MediaCodecList + rank + blacklist regex -> codec name or null"
+    ],
+    "nativeStrings": [
+      "mediacodec", "mediacodec-hevc",
+      "will try fallback to ffplay decoder",
+      "amc: use default", "amc: no suitable codec",
+      "onSelectCodec", "mediacodec-default-name"
+    ]
+  },
+  "confidence": {
+    "v3Pipeline": "high",
+    "modeMapping": "high",
+    "autoPolicy": "high",
+    "sonySpecific": "high"
+  }
+}
