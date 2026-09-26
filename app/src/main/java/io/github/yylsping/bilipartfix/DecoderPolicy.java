@@ -2,7 +2,11 @@ package io.github.yylsping.bilipartfix;
 
 import java.util.Locale;
 
-/** Pure decision engine for the 7040300-only Smart Auto policy. */
+/**
+ * Pure decision engine for the Smart Auto policy shared by 7040300 and
+ * 7420400. Version-specific symbols live in DecoderProfile; this class only
+ * sees neutral stream metadata.
+ */
 final class DecoderPolicy {
     enum Decision { USE_HOST, PREFER_HARDWARE, PREFER_SOFTWARE }
 
@@ -25,6 +29,12 @@ final class DecoderPolicy {
     }
 
     enum HdrState { SDR, HDR, UNKNOWN }
+
+    /**
+     * Three-state DRM/protected read result. A read failure must stay UNKNOWN
+     * and fail open to the host; it must never collapse into CLEAR.
+     */
+    enum ProtectionState { CLEAR, PROTECTED, UNKNOWN }
 
     interface CapabilityProvider {
         CodecCapability.Assessment assess(StreamInfo stream);
@@ -86,11 +96,11 @@ final class DecoderPolicy {
         final float fps;
         final int bitDepth;
         final HdrState hdr;
-        final boolean protectedContent;
+        final ProtectionState protection;
         final int qualityId;
 
         StreamInfo(VideoCodec codec, int profile, int level, int width, int height,
-                   float fps, int bitDepth, HdrState hdr, boolean protectedContent,
+                   float fps, int bitDepth, HdrState hdr, ProtectionState protection,
                    int qualityId) {
             this.codec = codec == null ? VideoCodec.UNKNOWN : codec;
             this.profile = profile;
@@ -100,13 +110,13 @@ final class DecoderPolicy {
             this.fps = fps;
             this.bitDepth = bitDepth;
             this.hdr = hdr == null ? HdrState.UNKNOWN : hdr;
-            this.protectedContent = protectedContent;
+            this.protection = protection == null ? ProtectionState.UNKNOWN : protection;
             this.qualityId = qualityId;
         }
 
         static StreamInfo unknown() {
             return new StreamInfo(VideoCodec.UNKNOWN, 0, 0, 0, 0, 0f, 0,
-                    HdrState.UNKNOWN, false, 0);
+                    HdrState.UNKNOWN, ProtectionState.UNKNOWN, 0);
         }
 
         boolean hasEssentialMetadata() {
@@ -163,16 +173,19 @@ final class DecoderPolicy {
         if (scope != Scope.NORMAL_UGC) {
             return DecisionResult.of(Decision.USE_HOST, Reason.HOST_SCOPE_UNSUPPORTED);
         }
-        if (safeStream.protectedContent) {
-            return DecisionResult.of(Decision.USE_HOST, Reason.DRM_HOST_SAFE);
-        }
         // In Auto, missing selected-representation metadata is the primary reason
-        // to fail open. Do this before interpreting an UNKNOWN HDR field so logs
-        // distinguish "stream was not resolved" from a real HDR safety decision.
+        // to fail open. Do this before interpreting an UNKNOWN HDR or protection
+        // field so logs distinguish "stream was not resolved" from a real safety
+        // decision.
         if (safeMode == CodecModeStore.Mode.AUTO && !safeStream.hasEssentialMetadata()) {
             return DecisionResult.of(Decision.USE_HOST, Reason.STREAM_UNKNOWN);
         }
-        // HDR/Dolby owns renderer and codec overrides downstream in 7040300.
+        // Only a confirmed CLEAR stream continues; PROTECTED and an unreadable
+        // (UNKNOWN) protection state both fail open to the host.
+        if (safeStream.protection != ProtectionState.CLEAR) {
+            return DecisionResult.of(Decision.USE_HOST, Reason.DRM_HOST_SAFE);
+        }
+        // HDR/Dolby owns renderer and codec overrides downstream.
         if (safeStream.hdr != HdrState.SDR) {
             return DecisionResult.of(Decision.USE_HOST, Reason.HDR_HOST_SAFE);
         }

@@ -20,7 +20,7 @@ public final class LazyCapabilityProviderTest {
         DecoderPolicy policy = new DecoderPolicy();
         DecoderPolicy.StreamInfo stream = new DecoderPolicy.StreamInfo(
                 DecoderPolicy.VideoCodec.AVC, 0, 0, 1920, 1080, 60f, 0,
-                DecoderPolicy.HdrState.SDR, false, 116);
+                DecoderPolicy.HdrState.SDR, DecoderPolicy.ProtectionState.CLEAR, 116);
 
         assertFalse(lazy.isInitialized());
         policy.decide(CodecModeStore.Mode.AUTO, DecoderPolicy.Scope.HOST_UNSUPPORTED,

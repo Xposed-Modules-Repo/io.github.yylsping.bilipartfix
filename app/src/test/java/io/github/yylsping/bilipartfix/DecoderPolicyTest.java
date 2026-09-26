@@ -188,10 +188,38 @@ public final class DecoderPolicyTest {
     public void drmAlwaysUsesHost() {
         DecoderPolicy.StreamInfo stream = new DecoderPolicy.StreamInfo(
                 DecoderPolicy.VideoCodec.HEVC, 0, 0, 1920, 1080, 30f, 0,
-                DecoderPolicy.HdrState.SDR, true, 80);
+                DecoderPolicy.HdrState.SDR, DecoderPolicy.ProtectionState.PROTECTED, 80);
         assertDecision(DecoderPolicy.Decision.USE_HOST, DecoderPolicy.Reason.DRM_HOST_SAFE,
                 CodecModeStore.Mode.V3_HW, DecoderPolicy.Scope.NORMAL_UGC, stream,
                 supported(DecoderPolicy.VideoCodec.HEVC), noFailures);
+    }
+
+    @Test
+    public void unknownProtectionStateUsesHost() {
+        // A failed DRM/protected read must fail open exactly like a confirmed
+        // protected stream, in every decoder mode.
+        DecoderPolicy.StreamInfo stream = new DecoderPolicy.StreamInfo(
+                DecoderPolicy.VideoCodec.AVC, 0, 0, 1920, 1080, 30f, 0,
+                DecoderPolicy.HdrState.SDR, DecoderPolicy.ProtectionState.UNKNOWN, 80);
+        assertDecision(DecoderPolicy.Decision.USE_HOST, DecoderPolicy.Reason.DRM_HOST_SAFE,
+                CodecModeStore.Mode.AUTO, DecoderPolicy.Scope.NORMAL_UGC, stream,
+                supported(DecoderPolicy.VideoCodec.AVC), noFailures);
+        assertDecision(DecoderPolicy.Decision.USE_HOST, DecoderPolicy.Reason.DRM_HOST_SAFE,
+                CodecModeStore.Mode.V3_HW, DecoderPolicy.Scope.NORMAL_UGC, stream,
+                supported(DecoderPolicy.VideoCodec.AVC), noFailures);
+        assertDecision(DecoderPolicy.Decision.USE_HOST, DecoderPolicy.Reason.DRM_HOST_SAFE,
+                CodecModeStore.Mode.SOFTWARE, DecoderPolicy.Scope.NORMAL_UGC, stream,
+                supported(DecoderPolicy.VideoCodec.AVC), noFailures);
+    }
+
+    @Test
+    public void clearProtectionContinuesDecoderPolicy() {
+        DecoderPolicy.StreamInfo stream = new DecoderPolicy.StreamInfo(
+                DecoderPolicy.VideoCodec.AVC, 0, 0, 1920, 1080, 30f, 0,
+                DecoderPolicy.HdrState.SDR, DecoderPolicy.ProtectionState.CLEAR, 80);
+        assertDecision(DecoderPolicy.Decision.PREFER_HARDWARE, DecoderPolicy.Reason.HW_SUPPORTED,
+                CodecModeStore.Mode.AUTO, DecoderPolicy.Scope.NORMAL_UGC, stream,
+                supported(DecoderPolicy.VideoCodec.AVC), noFailures);
     }
 
     @Test
@@ -213,6 +241,34 @@ public final class DecoderPolicyTest {
         assertTrue(CodecCapability.isSecureOnlyName("c2.qti.hevc.decoder.secure"));
         assertTrue(CodecCapability.isSecureOnlyName("OMX.vendor.secure.avc.decoder"));
         assertTrue(!CodecCapability.isSecureOnlyName("c2.qti.hevc.decoder"));
+    }
+
+    @Test
+    public void protectionReadMapsOnlyRealBooleans() {
+        assertEquals(DecoderPolicy.ProtectionState.PROTECTED,
+                StreamInfoExtractor.protectionState(new FakeProtection(Boolean.TRUE), "E"));
+        assertEquals(DecoderPolicy.ProtectionState.CLEAR,
+                StreamInfoExtractor.protectionState(new FakeProtection(Boolean.FALSE), "E"));
+        // A non-Boolean return value is not evidence of clear content.
+        assertEquals(DecoderPolicy.ProtectionState.UNKNOWN,
+                StreamInfoExtractor.protectionState(new FakeProtection("not-a-boolean"), "E"));
+        // A reflection failure (missing/renamed method) must stay UNKNOWN so the
+        // policy fails open instead of assuming clear.
+        assertEquals(DecoderPolicy.ProtectionState.UNKNOWN,
+                StreamInfoExtractor.protectionState(new FakeProtection(Boolean.FALSE), "missing"));
+    }
+
+    /** Stands in for the obfuscated MediaResource protection getter. */
+    public static final class FakeProtection {
+        private final Object value;
+
+        FakeProtection(Object value) {
+            this.value = value;
+        }
+
+        public Object E() {
+            return value;
+        }
     }
 
     private void assertAutoCapability(DecoderPolicy.VideoCodec codec, int width, int height,
@@ -249,6 +305,6 @@ public final class DecoderPolicyTest {
                                             int width, int height, float fps,
                                             DecoderPolicy.HdrState hdr) {
         return new DecoderPolicy.StreamInfo(codec, 0, 0, width, height, fps, 0,
-                hdr, false, 80);
+                hdr, DecoderPolicy.ProtectionState.CLEAR, 80);
     }
 }

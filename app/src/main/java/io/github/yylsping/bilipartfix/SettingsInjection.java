@@ -23,9 +23,9 @@ final class SettingsInjection {
     private static final String ENTRY_TITLE = "bili-part-fix";
     private static final String MODE_TITLE = "解码模式选择";
     private static final CharSequence[] MODE_LABELS = {
-            "自动选择（推荐）",
-            "V3硬解优先（ijkplayer）",
-            "软解优先（兼容模式）"
+            "Smart Auto（推荐）",
+            "V3 硬解优先（ijkplayer）",
+            "软件解码优先（兼容模式）"
     };
     private static final CodecModeStore.Mode[] MODES = {
             CodecModeStore.Mode.AUTO,
@@ -41,7 +41,7 @@ final class SettingsInjection {
 
     private SettingsInjection() {}
 
-    static void install(Context context, ClassLoader classLoader) {
+    static boolean install(Context context, ClassLoader classLoader, HostVersion host) {
         CodecModeStore store = new CodecModeStore(context);
         Class<?> rootClass = XposedHelpers.findClass(ROOT_FRAGMENT, classLoader);
         Class<?> subpageClass = XposedHelpers.findClass(HOST_SUBPAGE_FRAGMENT, classLoader);
@@ -65,11 +65,22 @@ final class SettingsInjection {
                 }
             }
         };
+        // Install the subpage hook first and only expose the root entry after it
+        // is in place: a visible entry that cannot open its module page is worse
+        // than no entry at all. If either hook fails the host PreferenceScreen
+        // is left untouched.
+        try {
+            XposedHelpers.findAndHookMethod(subpageClass, "onCreatePreferences",
+                    Bundle.class, String.class, subpageHook);
+        } catch (Throwable throwable) {
+            XposedBridge.log("settings subpage hook installation failed; "
+                    + "root entry not installed", throwable);
+            return false;
+        }
         XposedHelpers.findAndHookMethod(rootClass, "onCreatePreferences",
                 Bundle.class, String.class, rootHook);
-        XposedHelpers.findAndHookMethod(subpageClass, "onCreatePreferences",
-                Bundle.class, String.class, subpageHook);
-        XposedBridge.log("7040300 native settings injection installed");
+        XposedBridge.log(host + " native settings injection installed");
+        return true;
     }
 
     private static void addRootEntry(Object fragment, ClassLoader classLoader) {

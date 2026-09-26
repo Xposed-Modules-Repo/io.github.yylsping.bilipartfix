@@ -1,15 +1,13 @@
 package io.github.yylsping.bilipartfix;
 
-/** Marks MediaResource instances proven to originate in NormalVideoPlayHandler. */
+/**
+ * Marks MediaResource instances proven to originate in NormalVideoPlayHandler.
+ * The version-specific callback classes and resolve task type come from the
+ * DecoderProfile; the preload path is identical on both supported hosts.
+ */
 final class NormalUgcScope {
-    private static final String RESOLVE_TASK =
-            "tv.danmaku.biliplayerv2.service.resolve.n";
     private static final String ABS_RESOLVE_TASK =
             "tv.danmaku.biliplayerv2.service.resolve.AbsMediaResourceResolveTask";
-    private static final String NORMAL_CALLBACK_D =
-            "tv.danmaku.biliplayerv2.service.NormalVideoPlayHandler$d";
-    private static final String NORMAL_CALLBACK_E =
-            "tv.danmaku.biliplayerv2.service.NormalVideoPlayHandler$e";
     private static final String NORMAL_PRELOAD =
             "tv.danmaku.biliplayerv2.service.NormalVideoPlayHandler$playPreloadRes$1";
     private static final String PRELOAD_RESULT =
@@ -17,8 +15,8 @@ final class NormalUgcScope {
 
     private final WeakIdentitySet<Object> resources = new WeakIdentitySet<>();
 
-    void install(ClassLoader classLoader) {
-        Class<?> taskClass = XposedHelpers.findClass(RESOLVE_TASK, classLoader);
+    void install(ClassLoader classLoader, DecoderProfile profile) {
+        Class<?> taskClass = XposedHelpers.findClass(profile.scopeTaskClass, classLoader);
         Class<?> absTaskClass = XposedHelpers.findClass(ABS_RESOLVE_TASK, classLoader);
         XC_MethodHook resolveHook = new XC_MethodHook() {
             @Override
@@ -32,10 +30,10 @@ final class NormalUgcScope {
                 }
             }
         };
-        XposedHelpers.findAndHookMethod(NORMAL_CALLBACK_D, classLoader, "c",
-                taskClass, resolveHook);
-        XposedHelpers.findAndHookMethod(NORMAL_CALLBACK_E, classLoader, "c",
-                taskClass, resolveHook);
+        for (String callbackClass : profile.scopeCallbackClasses) {
+            XposedHelpers.findAndHookMethod(callbackClass, classLoader, "c",
+                    taskClass, resolveHook);
+        }
 
         Class<?> preloadResultClass = XposedHelpers.findClass(PRELOAD_RESULT, classLoader);
         XposedHelpers.findAndHookMethod(NORMAL_PRELOAD, classLoader, "invokeSuspend",

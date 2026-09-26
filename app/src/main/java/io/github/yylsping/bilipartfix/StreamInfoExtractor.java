@@ -5,19 +5,30 @@ import org.json.JSONObject;
 import java.util.List;
 import java.util.Locale;
 
-/** Reads the selected DASH representation already resolved by Bilibili 7040300. */
+/**
+ * Reads the selected DASH representation already resolved by the host.
+ * All version-specific symbols come from the DecoderProfile so the same
+ * extractor serves both 7040300 and 7420400.
+ */
 final class StreamInfoExtractor {
-    private StreamInfoExtractor() {}
+    private final DecoderProfile profile;
 
-    static DecoderPolicy.StreamInfo extract(Object mediaResource, Object itemOptions) {
-        int qualityId = intMethod(itemOptions, "y", 0);
+    StreamInfoExtractor(DecoderProfile profile) {
+        this.profile = profile;
+    }
+
+    DecoderPolicy.StreamInfo extract(Object mediaResource, Object itemOptions) {
+        int qualityId = intMethod(itemOptions, profile.optionsQualityGetter, 0);
         if (qualityId <= 0) {
             try {
-                // MediaResource.R() uses PlayIndex.stat as the selected default when
-                // itemOptions.videoId is -1. Mirror that exact branch without calling R().
-                Object playIndex = XposedHelpers.callMethod(mediaResource, "o");
+                // MediaResource's asset build uses PlayIndex.stat as the selected
+                // default when the options video id is -1. Mirror that exact branch
+                // without building the asset.
+                Object playIndex = XposedHelpers.callMethod(mediaResource,
+                        profile.playIndexGetter);
                 if (playIndex != null) {
-                    qualityId = XposedHelpers.getIntField(playIndex, "f110922b");
+                    qualityId = XposedHelpers.getIntField(playIndex,
+                            profile.playIndexStatField);
                 }
             } catch (Throwable ignored) {
                 // Missing selection remains UNKNOWN and therefore fail-open.
@@ -27,17 +38,18 @@ final class StreamInfoExtractor {
         return extract(mediaResource, itemOptions, qualityId);
     }
 
-    static DecoderPolicy.StreamInfo extract(Object mediaResource, Object itemOptions,
-                                            int qualityId) {
-        boolean protectedContent = booleanMethod(mediaResource, "E", false);
+    DecoderPolicy.StreamInfo extract(Object mediaResource, Object itemOptions,
+                                     int qualityId) {
+        DecoderPolicy.ProtectionState protection =
+                protectionState(mediaResource, profile.protectedContentMethod);
         DecoderPolicy.HdrState hdr = hdrState(itemOptions);
         Object selected = findSelectedDash(mediaResource, qualityId);
         if (selected == null) {
             return new DecoderPolicy.StreamInfo(DecoderPolicy.VideoCodec.UNKNOWN,
-                    0, 0, 0, 0, 0f, 0, hdr, protectedContent, qualityId);
+                    0, 0, 0, 0, 0f, 0, hdr, protection, qualityId);
         }
 
-        int codecId = intMethod(selected, "k", 0);
+        int codecId = intMethod(selected, profile.dashCodecGetter, 0);
         DecoderPolicy.VideoCodec codec = codecId == 7
                 ? DecoderPolicy.VideoCodec.AVC
                 : codecId == 12 ? DecoderPolicy.VideoCodec.HEVC
@@ -45,20 +57,23 @@ final class StreamInfoExtractor {
         int width = intMethod(selected, "getWidth", 0);
         int height = intMethod(selected, "getHeight", 0);
         float fps = readFrameRate(selected);
-        // DashMediaIndex in this exact build exposes codec-id/size/frame-rate, but not
-        // stable profile, level or bit-depth fields. Zero means unknown, never 8-bit.
+        // DashMediaIndex in the supported builds exposes codec-id/size/frame-rate,
+        // but not stable profile, level or bit-depth fields. Zero means unknown,
+        // never 8-bit.
         return new DecoderPolicy.StreamInfo(codec, 0, 0, width, height, fps, 0,
-                hdr, protectedContent, qualityId);
+                hdr, protection, qualityId);
     }
 
-    private static Object findSelectedDash(Object mediaResource, int qualityId) {
+    private Object findSelectedDash(Object mediaResource, int qualityId) {
         try {
             Object dash = XposedHelpers.callMethod(mediaResource, "h");
             if (dash == null) return null;
             Object value = XposedHelpers.callMethod(dash, "h");
             if (!(value instanceof List)) return null;
             for (Object index : (List<?>) value) {
-                if (index != null && intMethod(index, "n", Integer.MIN_VALUE) == qualityId) {
+                if (index != null
+                        && intMethod(index, profile.dashQualityGetter,
+                                Integer.MIN_VALUE) == qualityId) {
                     return index;
                 }
             }
@@ -71,17 +86,19 @@ final class StreamInfoExtractor {
         return null;
     }
 
-    private static DecoderPolicy.HdrState hdrState(Object options) {
+    private DecoderPolicy.HdrState hdrState(Object options) {
         try {
-            boolean hdr = Boolean.TRUE.equals(XposedHelpers.callMethod(options, "C"));
-            boolean dolby = Boolean.TRUE.equals(XposedHelpers.callMethod(options, "A"));
+            boolean hdr = Boolean.TRUE.equals(
+                    XposedHelpers.callMethod(options, profile.hdrGetter));
+            boolean dolby = Boolean.TRUE.equals(
+                    XposedHelpers.callMethod(options, profile.dolbyGetter));
             return hdr || dolby ? DecoderPolicy.HdrState.HDR : DecoderPolicy.HdrState.SDR;
         } catch (Throwable ignored) {
             return DecoderPolicy.HdrState.UNKNOWN;
         }
     }
 
-    private static float readFrameRate(Object dashIndex) {
+    private float readFrameRate(Object dashIndex) {
         String value = null;
         try {
             Object json = XposedHelpers.callMethod(dashIndex, "b");
@@ -91,7 +108,7 @@ final class StreamInfoExtractor {
         }
         if (value == null || value.trim().isEmpty()) {
             try {
-                Object raw = XposedHelpers.getObjectField(dashIndex, "f110847i");
+                Object raw = XposedHelpers.getObjectField(dashIndex, profile.frameRateField);
                 if (raw != null) value = String.valueOf(raw);
             } catch (Throwable ignored) {
                 return 0f;
@@ -125,12 +142,22 @@ final class StreamInfoExtractor {
         }
     }
 
-    private static boolean booleanMethod(Object target, String method, boolean fallback) {
+    /**
+     * Reads the host DRM/protected flag as a three-state value: only an actual
+     * Boolean result maps to CLEAR/PROTECTED; any reflection failure or
+     * unexpected return type stays UNKNOWN so the policy fails open.
+     */
+    static DecoderPolicy.ProtectionState protectionState(Object target,
+                                                         String method) {
+        Object value;
         try {
-            Object value = XposedHelpers.callMethod(target, method);
-            return value instanceof Boolean ? (Boolean) value : fallback;
+            value = XposedHelpers.callMethod(target, method);
         } catch (Throwable ignored) {
-            return fallback;
+            return DecoderPolicy.ProtectionState.UNKNOWN;
         }
+        if (!(value instanceof Boolean)) return DecoderPolicy.ProtectionState.UNKNOWN;
+        return ((Boolean) value)
+                ? DecoderPolicy.ProtectionState.PROTECTED
+                : DecoderPolicy.ProtectionState.CLEAR;
     }
 }

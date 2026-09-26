@@ -4,12 +4,14 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 
-/** Applies 7040300 Smart Auto at the real MediaResource -> IJK transform boundary. */
+/**
+ * Applies the shared Smart Auto policy at the real MediaResource -> IJK
+ * transform boundary. Version-specific symbols come from DecoderProfile;
+ * the decision logic is identical on both supported hosts.
+ */
 final class PlayerCodecFix {
     private static final String MEDIA_RESOURCE =
             "com.bilibili.lib.media.resource.MediaResource";
-    private static final String ITEM_OPTIONS =
-            "tv.danmaku.videoplayer.coreV2.transformer.d";
     private static final String TRANSFORMER =
             "tv.danmaku.videoplayer.coreV2.transformer.b";
     private static final String MEDIA_ITEM_CALLBACK =
@@ -22,7 +24,12 @@ final class PlayerCodecFix {
 
     private PlayerCodecFix() {}
 
-    static void install(Context context, ClassLoader classLoader) {
+    static boolean install(Context context, ClassLoader classLoader, HostVersion host) {
+        DecoderProfile profile = DecoderProfile.forHost(host);
+        if (profile == null) {
+            XposedBridge.log("no decoder profile for " + host + "; Smart Auto not installed");
+            return false;
+        }
         CodecModeStore store = new CodecModeStore(context);
         LazyCapabilityProvider capability = new LazyCapabilityProvider(() -> {
             if (BuildConfig.DEBUG) {
@@ -32,21 +39,23 @@ final class PlayerCodecFix {
         });
         DecoderPolicy policy = new DecoderPolicy();
         RuntimeFailureMemory failureMemory = new RuntimeFailureMemory();
+        StreamInfoExtractor extractor = new StreamInfoExtractor(profile);
         NormalUgcScope scope = new NormalUgcScope();
-        scope.install(classLoader);
+        scope.install(classLoader, profile);
 
-        Class<?> optionsClass = XposedHelpers.findClass(ITEM_OPTIONS, classLoader);
-        XposedHelpers.findAndHookMethod(optionsClass, "g", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) {
-                Boolean override = HARDWARE_OVERRIDE.get();
-                if (override != null) param.setResult(override);
-            }
-        });
+        Class<?> optionsClass = XposedHelpers.findClass(profile.itemOptionsClass, classLoader);
+        XposedHelpers.findAndHookMethod(optionsClass, profile.hardwarePreferenceGetter,
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        Boolean override = HARDWARE_OVERRIDE.get();
+                        if (override != null) param.setResult(override);
+                    }
+                });
 
         Class<?> mediaResourceClass = XposedHelpers.findClass(MEDIA_RESOURCE, classLoader);
-        XposedHelpers.findAndHookMethod(mediaResourceClass, "R", int.class, int.class,
-                new XC_MethodHook() {
+        XposedHelpers.findAndHookMethod(mediaResourceClass, profile.assetBuildMethod,
+                int.class, int.class, new XC_MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
                         DecisionContext active = ACTIVE_CONTEXT.get();
@@ -65,7 +74,8 @@ final class PlayerCodecFix {
                                 debug("selected IjkMediaAsset video id unavailable", throwable);
                             }
                         }
-                        active.evaluate(selectedVideoId, policy, capability, failureMemory);
+                        active.evaluate(selectedVideoId, policy, capability, failureMemory,
+                                extractor);
                     }
                 });
 
@@ -85,7 +95,7 @@ final class PlayerCodecFix {
                         Object options = param.args[1];
                         DecisionContext active = new DecisionContext(mediaResource, options,
                                 store.getMode(), scope.contains(mediaResource),
-                                readHostHardware(options));
+                                readHostHardware(options, profile));
                         if (BuildConfig.DEBUG) {
                             XposedBridge.log("BiliPartFix/SmartAuto: transformer enter identity="
                                     + System.identityHashCode(mediaResource)
@@ -93,7 +103,7 @@ final class PlayerCodecFix {
                         }
                         ACTIVE_CONTEXT.set(active);
                         if (!active.normalUgc) {
-                            active.evaluate(0, policy, capability, failureMemory);
+                            active.evaluate(0, policy, capability, failureMemory, extractor);
                         }
                     }
 
@@ -101,7 +111,7 @@ final class PlayerCodecFix {
                     protected void afterHookedMethod(MethodHookParam param) {
                         DecisionContext active = ACTIVE_CONTEXT.get();
                         if (active != null && !active.evaluated) {
-                            active.evaluate(0, policy, capability, failureMemory);
+                            active.evaluate(0, policy, capability, failureMemory, extractor);
                         }
                         HARDWARE_OVERRIDE.remove();
                         ACTIVE_CONTEXT.remove();
@@ -115,13 +125,14 @@ final class PlayerCodecFix {
                         }
                     }
                 });
-        XposedBridge.log("7040300 Smart Auto codec policy installed; capability detection="
-                + "lazy");
-        if (BuildConfig.DEBUG) {
+        XposedBridge.log(host + " Smart Auto codec policy installed; capability detection=lazy");
+        if (BuildConfig.DEBUG && host == HostVersion.V7040300) {
+            // The read-only research instrumentation hardcodes 7040300 symbols.
             LiveCodecResearch.install(context, classLoader);
             new Handler(Looper.getMainLooper()).postDelayed(
                     () -> LegacyCodecResearch.logSnapshot(context, classLoader), 5000L);
         }
+        return true;
     }
 
     private static final class DecisionContext {
@@ -143,11 +154,12 @@ final class PlayerCodecFix {
 
         void evaluate(int selectedVideoId, DecoderPolicy policy,
                       DecoderPolicy.CapabilityProvider capability,
-                      RuntimeFailureMemory failureMemory) {
+                      RuntimeFailureMemory failureMemory,
+                      StreamInfoExtractor extractor) {
             if (evaluated) return;
             evaluated = true;
             DecoderPolicy.StreamInfo stream = normalUgc
-                    ? StreamInfoExtractor.extract(mediaResource, options, selectedVideoId)
+                    ? extractor.extract(mediaResource, options, selectedVideoId)
                     : DecoderPolicy.StreamInfo.unknown();
             DecoderPolicy.DecisionResult result = policy.decide(mode,
                     normalUgc ? DecoderPolicy.Scope.NORMAL_UGC
@@ -163,9 +175,10 @@ final class PlayerCodecFix {
         }
     }
 
-    private static boolean readHostHardware(Object options) {
+    private static boolean readHostHardware(Object options, DecoderProfile profile) {
         try {
-            return Boolean.TRUE.equals(XposedHelpers.callMethod(options, "g"));
+            return Boolean.TRUE.equals(
+                    XposedHelpers.callMethod(options, profile.hardwarePreferenceGetter));
         } catch (Throwable throwable) {
             debug("host preference unavailable", throwable);
             return false;
@@ -188,6 +201,7 @@ final class PlayerCodecFix {
                 + ", size=" + stream.width + 'x' + stream.height
                 + ", fps=" + stream.fps
                 + ", hdr=" + stream.hdr
+                + ", protection=" + stream.protection
                 + ", qn=" + stream.qualityId
                 + ", decoder=" + (assessment.decoderName.isEmpty()
                         ? "unknown" : assessment.decoderName)
